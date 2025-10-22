@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart' show SpeechToText;
+import 'package:url_launcher/url_launcher.dart';
 
 class ListeningPage extends StatefulWidget {
   const ListeningPage({super.key});
@@ -24,8 +25,8 @@ class _ListeningPageState extends State<ListeningPage>
   String _lastWords = '';
   bool isThinking = false; // AI is generating response
   String aiResponse = '';
+  bool isMicVisible = true;
 
-  // Store API response
   @override
   void initState() {
     super.initState();
@@ -47,6 +48,7 @@ class _ListeningPageState extends State<ListeningPage>
   }
 
   Future<void> greetUser() async {
+    setState(() => isMicVisible = false); // Hide mic while greeting
     const greeting = "Hey, what’s up? Feel free to ask me anything!";
 
     await flutterTts.setLanguage("en-US");
@@ -54,9 +56,14 @@ class _ListeningPageState extends State<ListeningPage>
     await flutterTts.setVolume(1.0);
     await flutterTts.setPitch(1.0);
     await flutterTts.speak(greeting);
+
+    flutterTts.setCompletionHandler(() {
+      setState(() => isMicVisible = true); // Show mic after greeting
+    });
   }
 
   void _initSpeech() async {
+    await _speechToText.initialize();
     setState(() {});
   }
 
@@ -79,12 +86,56 @@ class _ListeningPageState extends State<ListeningPage>
   Future<void> speakAIResponse(String text) async {
     if (text.isEmpty) return;
 
+    setState(() => isMicVisible = false); // Hide mic
+
     await flutterTts.setLanguage("en-US");
-    await flutterTts.setSpeechRate(0.5); // Adjust speed
+    await flutterTts.setSpeechRate(0.5);
     await flutterTts.setVolume(1.0);
     await flutterTts.setPitch(1.0);
 
     await flutterTts.speak(text);
+
+    // Wait until speaking finishes
+    flutterTts.setCompletionHandler(() {
+      setState(() => isMicVisible = true); // Show mic again
+    });
+  }
+
+  Future<void> openGoogle(String query) async {
+    final url = Uri.parse(
+      'https://www.google.com/search?q=${Uri.encodeComponent(query)}',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      print('Could not launch Google search for: $query');
+    }
+  }
+
+  String extractGoogleQuery(String command) {
+    command = command.toLowerCase();
+
+    // Remove trigger phrases
+    command = command.replaceAll(RegExp(r'jarvis'), '');
+    command = command.replaceAll(RegExp(r'search for'), '');
+    command = command.replaceAll(RegExp(r'look up'), '');
+    command = command.replaceAll(RegExp(r'google'), '');
+    command = command.replaceAll(RegExp(r'please'), '');
+
+    return command.trim(); // This is what we will search
+  }
+
+  String extractYouTubeQuery(String command) {
+    command = command.toLowerCase();
+
+    // Remove "jarvis" and common phrases
+    command = command.replaceAll(RegExp(r'jarvis'), '');
+    command = command.replaceAll(RegExp(r'open youtube'), '');
+    command = command.replaceAll(RegExp(r'and play'), '');
+    command = command.replaceAll(RegExp(r'please'), '');
+
+    return command.trim(); // This is what we will search
   }
 
   void _onSpeechResult(SpeechRecognitionResult result) async {
@@ -93,16 +144,33 @@ class _ListeningPageState extends State<ListeningPage>
     });
 
     if (result.finalResult && _lastWords.isNotEmpty) {
+      final command = _lastWords.toLowerCase();
+
+      // YouTube command
+      if (command.contains('youtube')) {
+        final query = extractYouTubeQuery(command);
+        await openYouTube(query);
+        return; // Skip AI response
+      }
+
+      // Google command
+      if (command.contains('search') ||
+          command.contains('google') ||
+          command.contains('look up')) {
+        final query = extractGoogleQuery(command);
+        if (query.isNotEmpty) {
+          await openGoogle(query);
+          return; // Skip AI response
+        }
+      }
+
+      // Normal AI response
       setState(() => isThinking = true);
-
       String response = await geminiTextAPI(_lastWords);
-
       setState(() {
         aiResponse = response;
         isThinking = false;
       });
-
-      // Speak the AI response
       speakAIResponse(response);
     }
   }
@@ -114,6 +182,19 @@ class _ListeningPageState extends State<ListeningPage>
     _speechToText.stop();
     _speechToText.cancel();
     super.dispose();
+  }
+
+  Future<void> openYouTube(String query) async {
+    // Construct search URL
+    final url = Uri.parse(
+      'https://www.youtube.com/results?search_query=${Uri.encodeComponent(query)}',
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      print('Could not launch $url');
+    }
   }
 
   @override
@@ -165,7 +246,6 @@ class _ListeningPageState extends State<ListeningPage>
                               : 'Tap the microphone to start listening...')),
               textAlign: TextAlign.center,
               style: TextStyle(
-                // ignore: deprecated_member_use
                 color: Colors.white.withOpacity(
                   (_lastWords.isNotEmpty || aiResponse.isNotEmpty || isThinking)
                       ? 1
@@ -220,7 +300,6 @@ class _ListeningPageState extends State<ListeningPage>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              // ignore: deprecated_member_use
               color: Colors.cyan.withOpacity(0.3 * (1 - animation.value)),
               width: 2,
             ),
@@ -276,37 +355,50 @@ class _ListeningPageState extends State<ListeningPage>
               Navigator.pop(context);
             },
           ),
-          GestureDetector(
-            onTap: _speechToText.isNotListening
-                ? _startListening
-                : _stopListening,
-
-            child: Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Colors.cyan, Colors.blue],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.cyan.withOpacity(0.5),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Icon(
-                _speechToText.isNotListening ? Icons.mic_off : Icons.stop,
-              ),
-            ),
-          ),
+          _buildMicButton(),
           IconButton(
             icon: const Icon(Icons.keyboard, color: Colors.white, size: 28),
             onPressed: () {},
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMicButton() {
+    return AnimatedSlide(
+      duration: const Duration(milliseconds: 300),
+      offset: isMicVisible
+          ? Offset(0, 0)
+          : Offset(0, 2), // Move down when hidden
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: isMicVisible ? 1 : 0, // Fade out
+        child: GestureDetector(
+          onTap: _speechToText.isNotListening
+              ? _startListening
+              : _stopListening,
+          child: Container(
+            width: 70,
+            height: 70,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Colors.cyan, Colors.blue],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.cyan.withOpacity(0.5),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              _speechToText.isNotListening ? Icons.mic_off : Icons.stop,
+            ),
+          ),
+        ),
       ),
     );
   }

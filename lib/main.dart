@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:ai_assistant_app/ai_selection_view.dart';
 import 'package:ai_assistant_app/listening.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -206,7 +207,12 @@ class _HomePageState extends State<HomePage> {
               color: Colors.white,
               size: 28,
             ),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AISelectionPage()),
+              );
+            },
           ),
           GestureDetector(
             onTap: () => _navigateToListeningPage(),
