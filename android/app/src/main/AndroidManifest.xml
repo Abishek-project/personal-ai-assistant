@@ -27,7 +27,7 @@
         </intent>
      </queries> 
     <application
-        android:label="ai_assistant_app"
+        android:label="Ai Assistant"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
