@@ -2,7 +2,7 @@
 ### *A Voice-Interactive Jarvis-Style Assistant Built with Flutter & Gemini 2.5 Flash*
  “Your own AI-powered companion that listens, speaks, and performs tasks — all through voice.”
 
----
+![App UI](assets/AiCover.png)
 
 ## 🚀 Overview  
 **Personal AI Assistant** is a **Jarvis-style voice-interactive assistant** built using **Flutter** and **Gemini 2.5 Flash API**.  
